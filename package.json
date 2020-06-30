@@ -2,7 +2,7 @@
   "name": "minecraft-protocol-interceptor",
   "version": "0.1.0",
   "description": "minecraft proxy for epic stuff",
-  "main": "index.js",
+  "main": "build/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -18,7 +18,9 @@
   "homepage": "https://github.com/hellomouse/minecraft-protocol-interceptor#readme",
   "dependencies": {
     "@hellomouse/eslint-config-typescript": "^1.1.11",
-    "minecraft-protocol": "^1.13.0"
+    "collections": "^5.1.11",
+    "minecraft-protocol": "^1.13.0",
+    "winston": "^3.3.3"
   },
   "devDependencies": {
     "@types/node": "^14.0.14",

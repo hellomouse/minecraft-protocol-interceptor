@@ -30,7 +30,12 @@ async function main() {
     serverAddress: server,
     username,
     session,
-    version: '1.16.1'
+    version: '1.16.1',
+    modules: ['test'],
+    modulesDir: path.resolve('./build/modules'),
+    moduleConfig: {
+      'test': { asdf: 'hi!' }
+    }
   });
 }
 
