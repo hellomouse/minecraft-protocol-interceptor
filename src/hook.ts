@@ -202,7 +202,7 @@ export class Hooks {
    * @param data Packet data or other payload
    * @return False if event cancelled, true if not
    */
-  async runHooks(scope: Direction, type: string, data: any): Promise<boolean> {
+  async execute(scope: Direction, type: string, data: any): Promise<boolean> {
     let hookList = this.hooks[scope].get(type);
     if (!hookList) return true;
     let event = new Event(type, scope, data);

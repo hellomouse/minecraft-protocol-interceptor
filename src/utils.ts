@@ -1,8 +1,2 @@
-import { inspect } from 'util';
-
-export function fullInspect(obj: any) {
-  return inspect(obj, {
-    depth: null,
-    maxArrayLength: null
-  });
-}
+// reserved for later use maybe?
+export default null;

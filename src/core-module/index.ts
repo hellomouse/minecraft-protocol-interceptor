@@ -6,7 +6,7 @@ import { Module } from '../module';
  */
 
 export default class CoreModule extends Module {
-  public name = '_core';
+  public name = 'core';
 
   async _load(reloading: boolean) {
     // TODO: this
