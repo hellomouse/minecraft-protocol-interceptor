@@ -1,4 +1,7 @@
+// @ts-ignore unfortunately this module does not have types
+import Deque = require('collections/deque');
 import MinecraftProxy from './proxy';
+import { OutgoingMessage } from 'http';
 
 export interface CommandDescriptor {
   /** Name of the command */
@@ -181,8 +184,56 @@ export class CommandGraphNode {
     this.name = name;
   }
 
-  setParser(parser: string): this {
+  setName(name?: string): this {
+    this.name = name;
+    return this;
+  }
+
+  setParser(parser?: string): this {
     this.parser = parser;
+    return this;
+  }
+
+  setProperties(properties?: any): this {
+    this.properties = properties;
+    return this;
+  }
+
+  setFlags(flags: CommandNodeFlags): this {
+    this.flags = flags;
+    return this;
+  }
+
+  asLiteral(): this {
+    this.parser = undefined;
+    this.properties = undefined;
+    this.suggestionType = undefined;
+    this.flags.hasCustomSuggestions = false;
+    this.flags.nodeType = CommandNodeType.Literal;
+    return this;
+  }
+
+  asArgument({ parser, properties, suggestionType }: {
+    parser?: string,
+    properties?: any,
+    suggestionType?: CommandNodeSuggestions
+  }): this {
+    if (suggestionType) this.flags.hasCustomSuggestions = true;
+    this.suggestionType = suggestionType;
+    this.properties = properties;
+    this.parser = parser;
+    this.flags.nodeType = CommandNodeType.Argument;
+    return this;
+  }
+
+  defineChild(child: CommandGraphNode): this {
+    this.children.add(child);
+    return this;
+  }
+
+  setRedirect(child: CommandGraphNode | null): this {
+    this.redirectNode = child;
+    if (child) this.flags.hasRedirect = true;
     return this;
   }
 
@@ -192,6 +243,26 @@ export class CommandGraphNode {
    */
   _serialize(): SerializedCommandNode {
     /* eslint-disable @typescript-eslint/naming-convention,camelcase */
+    let extraNodeData;
+    switch (this.flags.nodeType) {
+      case CommandNodeType.Root:
+        extraNodeData = undefined;
+        break;
+      case CommandNodeType.Literal:
+        if (!this.name) {
+          throw new Error('name required with CommandNodeType.Literal');
+        }
+        extraNodeData = this.name;
+        break;
+      case CommandNodeType.Argument:
+        extraNodeData = {
+          name: this.name,
+          parser: this.parser,
+          properties: this.properties,
+          suggests: this.suggestionType
+        };
+        break;
+    }
     return {
       children: [], // to be written later
       flags: {
@@ -201,12 +272,7 @@ export class CommandGraphNode {
         has_command: Number(this.flags.isExecutable),
         command_node_type: this.flags.nodeType
       },
-      extraNodeData: {
-        name: this.name,
-        parser: this.parser,
-        properties: this.properties,
-        suggests: this.suggestionType
-      },
+      extraNodeData,
       redirectNode: undefined // to be written later
     };
     /* eslint-enable @typescript-eslint/naming-convention,camelcase */
@@ -249,6 +315,7 @@ export class CommandGraphNode {
     }
     instance._serializedRedirectNodeId = serialized.redirectNode ?? null;
     instance._serializedChildrenIds = serialized.children;
+    return instance;
   }
 
   /**
@@ -272,13 +339,52 @@ export class CommandGraphNode {
  * Reference: https://wiki.vg/Command_Data
  */
 export class CommandGraph {
+  /** Root node of the command graph */
+  public root: CommandGraphNode | null = new CommandGraphNode()
+    .setFlags({
+      nodeType: CommandNodeType.Root,
+      hasCustomSuggestions: false,
+      hasRedirect: false,
+      isExecutable: false
+    });
+
+  /**
+   * Serialize the current graph into an array
+   * @return Serialized graph
+   */
+  serialize(): SerializedCommandNode[] {
+    let unserialized: CommandGraphNode[] = [];
+    let queue: any = new Deque();
+    queue.unshift(this.root);
+    while (queue.length) {
+      let node: CommandGraphNode = queue.pop();
+      unserialized.push(node);
+      // visit children
+      for (let child of node.children) queue.unshift(child);
+      // visit redirect node, if exists
+      if (node.redirectNode) queue.unshift(node.redirectNode);
+    }
+    // give ids to each node
+    for (let i = 0; i < unserialized.length; i++) {
+      unserialized[i]._serializedId = i;
+    }
+    // create serialized base
+    let serialized = unserialized.map(node => node._serialize());
+    // rewrite links
+    for (let i = 0; i < unserialized.length; i++) {
+      unserialized[i]._serializeFinal(serialized[i]);
+    }
+    return serialized;
+  }
+
   /**
    * Deserialize command graph from array
    * @param serialized
    */
-  deserialize(serialized: SerializedCommandNode[]) {
+  deserialize(serialized: SerializedCommandNode[], root: number) {
     let deserialized = serialized.map(node => CommandGraphNode._deserialize(node));
-    
+    for (let node of deserialized) node._deserializeFinal(deserialized);
+    this.root = deserialized[root];
   }
 }
 
@@ -312,6 +418,13 @@ export class CommandRegistry {
       throw new Error('command already exists');
     }
     let command = new Command(this, descriptor);
+    if (
+      command.autocomplete?.name &&
+      this.prefix.startsWith('/') &&
+      !command.autocomplete.name.startsWith(this.prefix.slice(1))
+    ) {
+      command.autocomplete.name = this.prefix.slice(1) + command.autocomplete.name;
+    }
     this.commands.set(command.name, command);
     return command;
   }
@@ -351,10 +464,17 @@ export class CommandRegistry {
   }
 
   /**
-   * Merge autocomplete data into existing command graph
+   * Get list of autocomplete nodes
    * @param graph
    */
-  mergeCommandGraph(graph: CommandGraph) {
-    if (!this.prefix.startsWith('/')) return; // nothing to do here
+  getAutocompleteNodes(): Set<CommandGraphNode> {
+    if (!this.prefix.startsWith('/')) return new Set(); // nothing to do here
+    let out = new Set<CommandGraphNode>();
+    for (let command of this.commands.values()) {
+      if (command.autocomplete) {
+        out.add(command.autocomplete);
+      }
+    }
+    return out;
   }
 }

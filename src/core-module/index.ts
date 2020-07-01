@@ -1,6 +1,7 @@
 import { Module } from '../module';
 import { Direction } from '../hook';
 import logger from '../logger';
+import { CommandGraphNode, SerializedCommandNode, CommandGraph } from '../command';
 
 /**
  * This is the module responsible for providing core functionality such as
@@ -29,20 +30,57 @@ export default class CoreModule extends Module {
   /** Proxy to Server keep-alive timeout */
   public serverKeepAliveTimeout: NodeJS.Timeout | null = null;
 
+  /** Commands declared by the server */ // TODO: this probably doesn't need to exist
+  public serverDeclaredCommands: SerializedCommandNode[] | null = null;
+  /** Current command graph */
+  public commandGraph: CommandGraph | null = null;
+  /** Nodes regsitered in the command graph belonging to local commands */
+  public localCommandNodes = new Set<CommandGraphNode>();
+
+  // if this works color me surprised
+  public statePreserveKeys: (keyof this)[] = [
+    'clientKeepAliveTimeout',
+    'clientKeepAliveCheckInterval',
+    'clientKeepAliveLastValue',
+    'serverKeepAliveTimeout',
+    'serverDeclaredCommands',
+    'commandGraph',
+    'localCommandNodes'
+  ];
+
+  /** Update the command graph with local commands */
+  updateCommandGraph() {
+    if (!this.commandGraph) return; // nothing to do
+    if (!this.commandGraph.root) throw new Error('graph has no root?');
+    for (let node of this.localCommandNodes) {
+      this.commandGraph.root.children.delete(node);
+    }
+    this.localCommandNodes = this.proxy.commandRegistry.getAutocompleteNodes();
+    for (let node of this.localCommandNodes) {
+      this.commandGraph.root.children.add(node);
+    }
+    logger.silly('updated command graph: %d local commands, %d remote commands',
+      this.localCommandNodes.size,
+      this.commandGraph.root.children.size - this.localCommandNodes.size);
+  }
+
   async _load(_reloading: boolean) {
+    // register command handler
     this.registerHook(Direction.ClientToServer, 'chat', async event => {
       if (this.proxy.commandRegistry.execute(event.data.message)) {
         event.cancel();
       }
     });
+
     this.registerCommand({
       name: 'test',
-      autocomplete: null,
+      autocomplete: new CommandGraphNode('test').asLiteral(),
       description: 'testing command lol',
       handler: ctx => ctx.reply('HI!!!!! :DDDD')
     });
 
     this.registerHook(Direction.Local, 'clientConnected', async _event => {
+      // register keepalive handlers
       if (this.clientKeepAliveTimeout) {
         // TODO: debugging purposes
         logger.error('clientKeepAliveTimeout was not null when client connected?');
@@ -66,8 +104,17 @@ export default class CoreModule extends Module {
           this.clientKeepAliveLastValue = null;
         }, 20 * 1000);
       }, 15 * 1000);
+
+      // if we have a command graph, send it
+      if (this.commandGraph) {
+        this.proxy.injectClient('declare_commands', {
+          nodes: this.commandGraph.serialize(),
+          rootIndex: 0
+        });
+      }
     });
     this.registerHook(Direction.Local, 'clientDisconnected', async _event => {
+      // keepalive handlers
       if (this.clientKeepAliveCheckInterval) {
         clearInterval(this.clientKeepAliveCheckInterval);
         this.clientKeepAliveCheckInterval = null;
@@ -79,6 +126,7 @@ export default class CoreModule extends Module {
       this.clientKeepAliveLastValue = null;
     });
     this.registerHook(Direction.Local, 'serverConnected', async _event => {
+      // keepalive handlers
       if (this.serverKeepAliveTimeout) {
         logger.warn('serverKeepAliveTimeout was not null when connected to server?');
         clearTimeout(this.serverKeepAliveTimeout);
@@ -91,10 +139,15 @@ export default class CoreModule extends Module {
       }, 30 * 1000);
     });
     this.registerHook(Direction.Local, 'serverDisconnected', async _event => {
+      // keepalive handlers
       if (this.serverKeepAliveTimeout) {
         clearTimeout(this.serverKeepAliveTimeout);
         this.serverKeepAliveTimeout = null;
       }
+
+      // reset local command graph
+      this.commandGraph = null;
+      this.localCommandNodes.clear();
     });
     this.registerHook(Direction.ClientToServer, 'keep_alive', async event => {
       // I WILL LOG EVERYTHING AND YOU WILL NOT STOP ME
@@ -123,6 +176,22 @@ export default class CoreModule extends Module {
       this.proxy.injectServer('keep_alive', event.data);
       this.serverKeepAliveTimeout?.refresh();
       event.cancel();
+    });
+
+    this.registerHook(Direction.ServerToClient, 'declare_commands', async event => {
+      // merge local command graph with server-side graph and send to client
+      // this is for autocomplete
+      // is this way too much effort for just autocomplete? yes
+      logger.silly('processing command graph from server');
+      this.commandGraph = new CommandGraph();
+      this.commandGraph.deserialize(event.data.nodes, event.data.rootIndex);
+      this.localCommandNodes.clear();
+      this.updateCommandGraph();
+      event.cancel();
+      this.proxy.injectClient('declare_commands', {
+        nodes: this.commandGraph.serialize(),
+        rootIndex: 0
+      });
     });
   }
 
