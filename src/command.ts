@@ -88,9 +88,183 @@ export class Command {
   }
 }
 
+/** I apologize */
+export interface SerializedCommandNode {
+  /* eslint-disable @typescript-eslint/naming-convention,camelcase */
+  flags: {
+    unused: number;
+    has_custom_suggestions: number;
+    has_redirect_node: number;
+    has_command: number;
+    command_node_type: number;
+  };
+  children: number[]; // NODE POINTER
+  redirectNode?: number; // NODE POINTER
+  extraNodeData?: string | {
+    name?: string;
+    parser?: string;
+    properties?: any; // this could be literally anything
+    suggests?: string;
+  };
+  /* eslint-enable @typescript-eslint/naming-convention,camelcase */
+}
+
+/** Type of command node */
+export enum CommandNodeType {
+  /** Node is root of command tree */
+  Root = 0,
+  /** Node is a literal value (not specified by user) */
+  Literal = 1,
+  /** Node is a user-specified argument to the command */
+  Argument = 2
+}
+
+/** Flags of command node */
+export interface CommandNodeFlags {
+  /** Node type */
+  nodeType: CommandNodeType;
+  /**
+   * Whether or not the command, up to the current node in the graph, is
+   * executable
+   */
+  isExecutable: boolean;
+  /** If the node redirects to another node */
+  hasRedirect: boolean;
+  /** Whether or not the argument has custom suggestions */
+  hasCustomSuggestions: boolean;
+}
+
+export enum CommandNodeSuggestions {
+  /** Ask server for suggestions by tab_complete packet */
+  AskServer = 'minecraft:ask_server',
+  /** Suggest all availble recipes */
+  Recipes = 'minecraft:all_recipes',
+  /** Suggest all available sounds */
+  Sounds = 'minecraft:available_sounds',
+  /** Suggest all summonable entities */
+  Entities = 'minecraft:summonable_entites'
+}
+
 /** Represents a node in the command graph */
 export class CommandGraphNode {
+  /** Flags of this node */
+  public flags: CommandNodeFlags = {
+    nodeType: CommandNodeType.Argument,
+    isExecutable: true,
+    hasRedirect: false,
+    hasCustomSuggestions: false
+  };
+  /** Children nodes of this node */
+  public children = new Set<CommandGraphNode>();
+  /** Redirect node, if any */
+  public redirectNode: CommandGraphNode | null = null;
+  /** Node name, if the node is an argument or literal type */
+  public name?: string;
+  /** Custom parser for this node */
+  public parser?: string;
+  /** Any parser properties */
+  public properties?: any;
+  /** Suggestions provider for this node */
+  public suggestionType?: CommandNodeSuggestions;
+  /** Node id when serializing */
+  public _serializedId: number | null = null;
+  /** Temporary redirect node id when deserializing */
+  public _serializedRedirectNodeId: number | null = null;
+  /** Temporary children node ids when deserializing */
+  public _serializedChildrenIds: number[] | null = null;
 
+  /**
+   * The constructor
+   * @param name
+   */
+  constructor(name?: string) {
+    this.name = name;
+  }
+
+  setParser(parser: string): this {
+    this.parser = parser;
+    return this;
+  }
+
+  /**
+   * Used internally for first-stage serialization of graph to array
+   * @return Serialized command node, without ids
+   */
+  _serialize(): SerializedCommandNode {
+    /* eslint-disable @typescript-eslint/naming-convention,camelcase */
+    return {
+      children: [], // to be written later
+      flags: {
+        unused: 0,
+        has_custom_suggestions: Number(this.flags.hasCustomSuggestions),
+        has_redirect_node: Number(this.flags.hasRedirect),
+        has_command: Number(this.flags.isExecutable),
+        command_node_type: this.flags.nodeType
+      },
+      extraNodeData: {
+        name: this.name,
+        parser: this.parser,
+        properties: this.properties,
+        suggests: this.suggestionType
+      },
+      redirectNode: undefined // to be written later
+    };
+    /* eslint-enable @typescript-eslint/naming-convention,camelcase */
+  }
+
+  /**
+   * Used internally after serialization to write node ids
+   * @param serialized
+   */
+  _serializeFinal(serialized: SerializedCommandNode) {
+    if (this.redirectNode) {
+      serialized.redirectNode = this.redirectNode._serializedId ?? undefined;
+    }
+    for (let child of this.children) {
+      serialized.children.push(child._serializedId!);
+    }
+  }
+
+  /**
+   * Used internally for first-stage deserialization of graph from array
+   * @param serialized
+   */
+  static _deserialize(serialized: SerializedCommandNode) {
+    let instance = new this();
+    instance.flags = {
+      hasCustomSuggestions: Boolean(serialized.flags.has_custom_suggestions),
+      hasRedirect: Boolean(serialized.flags.has_redirect_node),
+      isExecutable: Boolean(serialized.flags.has_command),
+      nodeType: serialized.flags.command_node_type as CommandNodeType
+    };
+    if (serialized.extraNodeData) {
+      if (typeof serialized.extraNodeData === 'string') {
+        instance.name = serialized.extraNodeData;
+      } else {
+        instance.name = serialized.extraNodeData.name;
+        instance.parser = serialized.extraNodeData.parser;
+        instance.properties = serialized.extraNodeData.properties;
+        instance.suggestionType = serialized.extraNodeData.suggests as CommandNodeSuggestions;
+      }
+    }
+    instance._serializedRedirectNodeId = serialized.redirectNode ?? null;
+    instance._serializedChildrenIds = serialized.children;
+  }
+
+  /**
+   * Used internally after deserialization of nodes to rehydrate links
+   * @param nodes
+   */
+  _deserializeFinal(nodes: CommandGraphNode[]) {
+    if (this._serializedRedirectNodeId) {
+      this.redirectNode = nodes[this._serializedRedirectNodeId];
+      this._serializedRedirectNodeId = null;
+    }
+    for (let id of this._serializedChildrenIds!) {
+      this.children.add(nodes[id]);
+    }
+    this._serializedChildrenIds = null;
+  }
 }
 
 /**
@@ -98,7 +272,14 @@ export class CommandGraphNode {
  * Reference: https://wiki.vg/Command_Data
  */
 export class CommandGraph {
-
+  /**
+   * Deserialize command graph from array
+   * @param serialized
+   */
+  deserialize(serialized: SerializedCommandNode[]) {
+    let deserialized = serialized.map(node => CommandGraphNode._deserialize(node));
+    
+  }
 }
 
 /** A registry for commands */

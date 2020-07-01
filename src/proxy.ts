@@ -83,7 +83,8 @@ export default class MinecraftProxy extends EventEmitter {
       'port': this.config.proxyPort,
       'motd': this.config.motd,
       'maxPlayers': 1, // TODO: disconnects aren't fired properly
-      'version': config.version
+      'version': config.version,
+      'keepAlive': false
     });
     this.hooks = new Hooks();
     this.commandRegistry = new CommandRegistry(this);
@@ -95,7 +96,7 @@ export default class MinecraftProxy extends EventEmitter {
   private async _init() {
     // WARNING: RELATIVE PATHS WILL BE INTERPRETED RELATIVE TO module.js
     await this.moduleRegistry.importFromPath('./core-module');
-    this.coreModule = await this.moduleRegistry.load('core');
+    this.coreModule = await this.moduleRegistry.load('core') as CoreModule;
 
     if (this.config.modulesDir) {
       await this.moduleRegistry.importAllFromDirectory(this.config.modulesDir);
@@ -135,6 +136,7 @@ export default class MinecraftProxy extends EventEmitter {
     this.proxyClient!.once('end', (...args) => {
       logger.debug('proxyClient emit end event', ...args);
     });
+    await this.hooks.execute(Direction.Local, 'clientConnected', this.proxyClient);
     if (!this.connectClient) {
       try {
         await this.doConnect();
@@ -148,6 +150,7 @@ export default class MinecraftProxy extends EventEmitter {
         this.hooks.execute(Direction.Local, 'serverDisconnected', null);
         this.connectClient = null;
       });
+      await this.hooks.execute(Direction.Local, 'serverConnected', this.connectClient);
     }
     this.proxyClient!.on('packet', async (data, meta) => {
       if (shouldDebugType(meta.name)) {
@@ -187,7 +190,8 @@ export default class MinecraftProxy extends EventEmitter {
         session: this.config.session,
         host: this.config.serverAddress,
         port: this.config.serverPort,
-        version: this.config.version
+        version: this.config.version,
+        keepAlive: false
       });
       this.connectClient.on('state', (newState: string) => {
         // wait for connection to be ready
@@ -214,11 +218,9 @@ export default class MinecraftProxy extends EventEmitter {
       };
       let removeListeners = () => {
           this.connectClient?.removeListener('login', listener);
-          // this.connectClient?.removeListener('error', failListener);
           this.connectClient?.removeListener('end', failListener);
       };
       this.connectClient!.on('login', listener);
-      // this.connectClient!.on('error', failListener);
       this.connectClient!.on('end', failListener);
       // TODO: debug purposes
       this.connectClient!.once('error', (...args) => {

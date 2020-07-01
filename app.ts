@@ -16,6 +16,7 @@ async function main() {
   let clientToken = activeAccount.clientToken;
   let uid = activeProfile.id;
   let server = process.argv[2];
+  let serverPort = +process.argv[3] ?? 25565;
   let session = {
     accessToken,
     clientToken,
@@ -28,6 +29,7 @@ async function main() {
     accessToken,
     clientToken,
     serverAddress: server,
+    serverPort,
     username,
     session,
     version: '1.16.1',

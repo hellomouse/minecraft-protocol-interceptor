@@ -119,4 +119,4 @@ dist
 /build
 
 # logs
-/protocol-log.txt
+/protocol-log*
