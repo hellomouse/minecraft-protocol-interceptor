@@ -37,7 +37,8 @@ async function main() {
     modulesDir: path.resolve('./build/modules'),
     moduleConfig: {
       'test': { asdf: 'hi!' }
-    }
+    },
+    commandPrefix: '/p:'
   });
 }
 

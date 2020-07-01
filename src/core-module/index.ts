@@ -1,4 +1,5 @@
 import { Module } from '../module';
+import { Direction } from '../hook';
 
 /**
  * This is the module responsible for providing core functionality such as
@@ -8,8 +9,18 @@ import { Module } from '../module';
 export default class CoreModule extends Module {
   public name = 'core';
 
-  async _load(reloading: boolean) {
-    // TODO: this
+  async _load(_reloading: boolean) {
+    this.registerHook(Direction.ClientToServer, 'chat', async event => {
+      if (this.proxy.commandRegistry.execute(event.data.message)) {
+        event.cancel();
+      }
+    });
+    this.registerCommand({
+      name: 'test',
+      autocomplete: null,
+      description: 'testing command lol',
+      handler: ctx => ctx.reply('HI!!!!! :DDDD')
+    });
   }
 
   async _unload(reloading: boolean) {

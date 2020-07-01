@@ -46,6 +46,8 @@ export interface ProxyConfiguration {
   modules?: string[];
   /** Module configuration */
   moduleConfig?: Record<string, any>;
+  /** Prefix for proxy commands */
+  commandPrefix?: string;
 }
 
 type ProxyConfigurationNonOptional = Required<ProxyConfiguration>
@@ -84,7 +86,7 @@ export default class MinecraftProxy extends EventEmitter {
       'version': config.version
     });
     this.hooks = new Hooks();
-    this.commandRegistry = new CommandRegistry();
+    this.commandRegistry = new CommandRegistry(this);
     this.moduleRegistry = new ModuleRegistry(this);
     this._init();
   }
@@ -244,7 +246,8 @@ export default class MinecraftProxy extends EventEmitter {
       password: null,
       clientToken: null,
       accessToken: null,
-      session: null
+      session: null,
+      commandPrefix: '/p:'
     }, config);
     nonOptionalConfig.modulesDir = path.resolve(nonOptionalConfig.modulesDir!);
     return nonOptionalConfig;
@@ -252,6 +255,7 @@ export default class MinecraftProxy extends EventEmitter {
 
   public reloadConfig(newConfig: ProxyConfiguration) {
     this.config = this.processConfig(newConfig);
+    // TODO: rewrite command graph from core module
     this.emit('reloadConfiguration');
   }
 }

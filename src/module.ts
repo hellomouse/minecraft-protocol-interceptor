@@ -1,7 +1,7 @@
 import { promises as fsP } from 'fs';
 import * as path from 'path';
 import { Hook, Direction, EventHandler } from './hook';
-import { Command } from './command';
+import { Command, CommandDescriptor } from './command';
 import MinecraftProxy from './proxy';
 import logger from './logger';
 
@@ -100,8 +100,10 @@ export abstract class Module {
    * Register a command that belongs to the module. The command will be
    * unregistered automatically on module unload.
    */
-  registerCommand() {
-    // TODO: this
+  registerCommand(descriptor: CommandDescriptor) {
+    let command = this.proxy.commandRegistry.register(descriptor);
+    this.commands.add(command);
+    return command;
   }
 
   /**

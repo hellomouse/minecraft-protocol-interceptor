@@ -50,7 +50,7 @@ export class Event {
   }
 }
 
-export type EventHandler = (event: Event) => Promise<void>;
+export type EventHandler = (event: Event) => Promise<any>;
 
 /** Represents a single hook */
 export class Hook {
