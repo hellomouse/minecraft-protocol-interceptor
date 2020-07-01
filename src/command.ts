@@ -1,7 +1,6 @@
 // @ts-ignore unfortunately this module does not have types
 import Deque = require('collections/deque');
 import MinecraftProxy from './proxy';
-import { OutgoingMessage } from 'http';
 
 export interface CommandDescriptor {
   /** Name of the command */

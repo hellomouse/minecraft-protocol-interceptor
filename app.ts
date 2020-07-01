@@ -34,11 +34,11 @@ async function main() {
     session,
     version: '1.16.1',
     modules: [
-      // 'test'
+      'eval'
     ],
     modulesDir: path.resolve('./build/modules'),
     moduleConfig: {
-      'test': { asdf: 'hi!' }
+      // 'test': { asdf: 'hi!' }
     },
     commandPrefix: '/p:'
   });

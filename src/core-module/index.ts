@@ -14,7 +14,7 @@ import { CommandGraphNode, SerializedCommandNode, CommandGraph } from '../comman
  * @return [most significant (64 - 53) bits, least significant 32 bits]
  */
 function to64BitNumber(n: number): [number, number] {
-  return [n & ((2 ** 53 - 1) - (2 ** 32 - 1)), n & (2 ** 32 - 1)];
+  return [Math.floor(n / (2 ** 32)), n >>> 0];
 }
 
 export default class CoreModule extends Module {
