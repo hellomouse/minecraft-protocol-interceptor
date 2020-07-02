@@ -6,7 +6,7 @@ export { default as logger } from './src/logger';
 export {
   Command,
   CommandGraph,
-  CommandGraphNode,
+  CommandNode,
   CommandContext
 } from './src/command';
 export type { CommandDescriptor, CommandHandler } from './src/command';

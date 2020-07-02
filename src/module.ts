@@ -198,6 +198,7 @@ export class ModuleRegistry {
       logger.debug(`module path is [${module._modulePath}]`);
     }
     this._doModuleObjectImport(module);
+    return module;
   }
 
   /**
@@ -247,9 +248,10 @@ export class ModuleRegistry {
     if (!moduleClass) throw new Error('reloaded module is invalid');
     let newModule: Module = new moduleClass(); // eslint-disable-line new-cap
     this._hydrateModule(newModule);
-    await oldModule.unload(true);
+    let wasLoaded = oldModule.loaded;
+    if (wasLoaded) await oldModule.unload(true);
     await newModule.migrateState(oldModule);
-    await newModule.load(true);
+    if (wasLoaded) await newModule.load(true);
     oldModule.current = newModule;
     if (oldModule.previous) {
       oldModule.previous.current = newModule;
@@ -280,7 +282,7 @@ export class ModuleRegistry {
     logger.info(`unloading module [${moduleName}]`);
     let module = this.modules.get(moduleName);
     if (!module) throw new Error('no such module');
-    if (module.loaded) throw new Error('module is already unloaded');
+    if (!module.loaded) throw new Error('module is already unloaded');
     await module.unload(false);
   }
 

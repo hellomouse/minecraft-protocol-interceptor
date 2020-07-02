@@ -1,6 +1,6 @@
 import { Module } from '../..';
 import { inspect } from 'util';
-import { CommandGraphNode } from '../..';
+import { CommandNode } from '../..';
 
 /** Evalulate JavaScript. Because why not. */
 
@@ -11,15 +11,14 @@ export default class EvalModule extends Module {
     this.registerCommand({
       name: 'eval',
       description: 'evaluate javascript on the proxy',
-      autocomplete: new CommandGraphNode('eval')
+      autocomplete: new CommandNode('eval')
         .asLiteral()
         .defineChild(
-          new CommandGraphNode('code')
+          new CommandNode('code')
             .asArgument({
               parser: 'brigadier:string',
               properties: 2
-            })
-        ),
+            })),
       handler: ctx => {
         let code = ctx.args.slice(1).join(' ');
         let result: any;

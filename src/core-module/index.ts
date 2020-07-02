@@ -1,7 +1,8 @@
+import * as path from 'path';
 import { Module } from '../module';
 import { Direction } from '../hook';
 import logger from '../logger';
-import { CommandGraphNode, SerializedCommandNode, CommandGraph } from '../command';
+import { CommandNode, SerializedCommandNode, CommandGraph } from '../command';
 
 /**
  * This is the module responsible for providing core functionality such as
@@ -35,7 +36,7 @@ export default class CoreModule extends Module {
   /** Current command graph */
   public commandGraph: CommandGraph | null = null;
   /** Nodes regsitered in the command graph belonging to local commands */
-  public localCommandNodes = new Set<CommandGraphNode>();
+  public localCommandNodes = new Set<CommandNode>();
 
   // if this works color me surprised
   public statePreserveKeys: (keyof this)[] = [
@@ -84,6 +85,15 @@ export default class CoreModule extends Module {
       this.commandGraph.root.children.size - this.localCommandNodes.size);
   }
 
+  /** Update and send the command graph to the client */
+  updateAndSendCommandGraph() {
+    this.updateCommandGraph();
+    this.proxy.injectClient('declare_commands', {
+      nodes: this.commandGraph!.serialize(),
+      rootIndex: 0
+    });
+  }
+
   async _load(reloading: boolean) {
     // reattach self to the main proxy object
     if (reloading) this.proxy.coreModule = this;
@@ -97,10 +107,89 @@ export default class CoreModule extends Module {
 
     this.registerCommand({
       name: 'module',
-      description: 'module management commands',
-      autocomplete: new CommandGraphNode('module'),
-      handler: ctx => {
-
+      description: [
+        'Module management commands',
+        '  module load <name> - load module with name',
+        '  module unload <name> - unload module with name',
+        '  module reload <name> - reload module with name',
+        '  module import <path> - import module with path from the modules directory'
+      ].join('\n'),
+      autocomplete: new CommandNode('module')
+        .asLiteral()
+        .setExecutable(false)
+        .defineChild(new CommandNode('load')
+          .asLiteral()
+          .setExecutable(false)
+          .defineChild(new CommandNode('name')
+            .asArgument({
+              parser: 'brigadier:string',
+              properties: 0
+            })))
+        .defineChild(new CommandNode('unload')
+          .asLiteral()
+          .setExecutable(false)
+          .defineChild(new CommandNode('name')
+            .asArgument({
+              parser: 'brigadier:string',
+              properties: 0
+            })))
+        .defineChild(new CommandNode('reload')
+          .asLiteral()
+          .setExecutable(false)
+          .defineChild(new CommandNode('name')
+            .asArgument({
+              parser: 'brigadier:string',
+              properties: 0
+            })))
+        .defineChild(new CommandNode('import')
+          .asLiteral()
+          .setExecutable(false)
+          .defineChild(new CommandNode('path')
+            .asArgument({
+              parser: 'brigadier:string',
+              properties: 0
+            }))),
+      handler: async ctx => {
+        if (ctx.args.length < 3) {
+          ctx.reply({ color: 'red', text: 'Not enough arguments' });
+          return;
+        }
+        let target = ctx.args[2];
+        let registry = this.proxy.moduleRegistry;
+        try {
+          switch (ctx.args[1].toLowerCase()) {
+            case 'load': {
+              await registry.load(target);
+              ctx.reply(`Loaded module [${target}]`);
+              break;
+            }
+            case 'unload': {
+              await registry.unload(target);
+              ctx.reply(`Unloaded module [${target}]`);
+              break;
+            }
+            case 'reload': {
+              await registry.reload(target);
+              ctx.reply(`Reloaded module [${target}]`);
+              break;
+            }
+            case 'import': {
+              if (this.proxy.config.modulesDir) {
+                let imported = registry.importFromPath(path.join(this.proxy.config.modulesDir, target));
+                if (!imported) ctx.reply({ color: 'red', text: 'Failed to import module' });
+                else ctx.reply(`Imported module [${imported.name}]`);
+              } else ctx.reply({ color: 'red', text: 'No modules directory defined' });
+              break;
+            }
+            default:
+              ctx.reply({ color: 'red', text: 'Unknown subcommand' });
+              return;
+          }
+          this.updateAndSendCommandGraph();
+        } catch (err) {
+          ctx.reply({ color: 'red', text: err.toString() });
+          return;
+        }
       }
     });
 
@@ -194,12 +283,8 @@ export default class CoreModule extends Module {
       this.commandGraph = new CommandGraph();
       this.commandGraph.deserialize(event.data.nodes, event.data.rootIndex);
       this.localCommandNodes.clear();
-      this.updateCommandGraph();
       event.cancel();
-      this.proxy.injectClient('declare_commands', {
-        nodes: this.commandGraph.serialize(),
-        rootIndex: 0
-      });
+      this.updateAndSendCommandGraph();
     });
   }
 

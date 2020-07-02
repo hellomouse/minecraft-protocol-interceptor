@@ -8,7 +8,7 @@ export interface CommandDescriptor {
   /** Description of the command, including help */
   description: string;
   /** Autocomplete graph, or null if not provided */
-  autocomplete: CommandGraphNode | null;
+  autocomplete: CommandNode | null;
   /** Handler for the command */
   handler: CommandHandler;
 }
@@ -62,7 +62,7 @@ export class Command {
   /** Description of the command, including help */
   description: string;
   /** Autocomplete graph, or null if not provided */
-  autocomplete: CommandGraphNode | null;
+  autocomplete: CommandNode | null;
   /** Handler for the command */
   handler: CommandHandler;
   /** Where the command is registered */
@@ -148,7 +148,7 @@ export enum CommandNodeSuggestions {
 }
 
 /** Represents a node in the command graph */
-export class CommandGraphNode {
+export class CommandNode {
   /** Flags of this node */
   public flags: CommandNodeFlags = {
     nodeType: CommandNodeType.Literal,
@@ -157,9 +157,9 @@ export class CommandGraphNode {
     hasCustomSuggestions: false
   };
   /** Children nodes of this node */
-  public children = new Set<CommandGraphNode>();
+  public children = new Set<CommandNode>();
   /** Redirect node, if any */
-  public redirectNode: CommandGraphNode | null = null;
+  public redirectNode: CommandNode | null = null;
   /** Node name, if the node is an argument or literal type */
   public name?: string;
   /** Custom parser for this node */
@@ -225,12 +225,17 @@ export class CommandGraphNode {
     return this;
   }
 
-  defineChild(child: CommandGraphNode): this {
+  setExecutable(executable: boolean): this {
+    this.flags.isExecutable = executable;
+    return this;
+  }
+
+  defineChild(child: CommandNode): this {
     this.children.add(child);
     return this;
   }
 
-  setRedirect(child: CommandGraphNode | null): this {
+  setRedirect(child: CommandNode | null): this {
     this.redirectNode = child;
     if (child) this.flags.hasRedirect = true;
     return this;
@@ -327,7 +332,7 @@ export class CommandGraphNode {
    * Used internally after deserialization of nodes to rehydrate links
    * @param nodes
    */
-  _deserializeFinal(nodes: CommandGraphNode[]) {
+  _deserializeFinal(nodes: CommandNode[]) {
     if (this._serializedRedirectNodeId) {
       this.redirectNode = nodes[this._serializedRedirectNodeId];
       this._serializedRedirectNodeId = null;
@@ -345,7 +350,7 @@ export class CommandGraphNode {
  */
 export class CommandGraph {
   /** Root node of the command graph */
-  public root: CommandGraphNode | null = new CommandGraphNode()
+  public root: CommandNode | null = new CommandNode()
     .setFlags({
       nodeType: CommandNodeType.Root,
       hasCustomSuggestions: false,
@@ -358,11 +363,11 @@ export class CommandGraph {
    * @return Serialized graph
    */
   serialize(): SerializedCommandNode[] {
-    let unserialized: CommandGraphNode[] = [];
+    let unserialized: CommandNode[] = [];
     let queue: any = new Deque();
     queue.unshift(this.root);
     while (queue.length) {
-      let node: CommandGraphNode = queue.pop();
+      let node: CommandNode = queue.pop();
       unserialized.push(node);
       // visit children
       for (let child of node.children) queue.unshift(child);
@@ -387,7 +392,7 @@ export class CommandGraph {
    * @param serialized
    */
   deserialize(serialized: SerializedCommandNode[], root: number) {
-    let deserialized = serialized.map(node => CommandGraphNode._deserialize(node));
+    let deserialized = serialized.map(node => CommandNode._deserialize(node));
     for (let node of deserialized) node._deserializeFinal(deserialized);
     this.root = deserialized[root];
   }
@@ -472,9 +477,9 @@ export class CommandRegistry {
    * Get list of autocomplete nodes
    * @param graph
    */
-  getAutocompleteNodes(): Set<CommandGraphNode> {
+  getAutocompleteNodes(): Set<CommandNode> {
     if (!this.prefix.startsWith('/')) return new Set(); // nothing to do here
-    let out = new Set<CommandGraphNode>();
+    let out = new Set<CommandNode>();
     for (let command of this.commands.values()) {
       if (command.autocomplete) {
         out.add(command.autocomplete);
