@@ -7,14 +7,14 @@ import { ModuleRegistry } from './module';
 import CoreModule from './core-module';
 import logger from './logger';
 
-const PACKET_DEBUG = process.env.PROXY_DEBUG === '1';
-const PACKET_DEBUG_TYPES = new Set();
+export let PACKET_DEBUG = process.env.PROXY_DEBUG === '1';
+export let PACKET_DEBUG_TYPES = new Set();
 if (PACKET_DEBUG && process.env.PROXY_DEBUG_TYPES) {
   for (let type of process.env.PROXY_DEBUG_TYPES.split(',')) {
     PACKET_DEBUG_TYPES.add(type);
   }
 }
-const PACKET_DEBUG_ALL = PACKET_DEBUG_TYPES.size === 0;
+export let PACKET_DEBUG_ALL = PACKET_DEBUG_TYPES.size === 0;
 function shouldDebugType(type: string) {
   return PACKET_DEBUG && (PACKET_DEBUG_ALL || PACKET_DEBUG_TYPES.has(type));
 }

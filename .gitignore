@@ -120,3 +120,8 @@ dist
 
 # logs
 /protocol-log*
+
+# ignore modules by default
+/modules/*
+# unless they should be part of the repository
+!/modules/eval

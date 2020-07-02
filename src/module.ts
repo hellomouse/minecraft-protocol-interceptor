@@ -22,10 +22,23 @@ export abstract class Module {
   /** Module configuration */
   public config: any = null;
   /**
+   * If this module was unloaded in favor of a new version during reload, this
+   * property will be set to allow old callbacks to find the new module
+   */
+  public current: this | null = null;
+  /**
+   * If this module superseded an older instance of itself, this property will
+   * contain the previous instance
+   */
+  public previous: this | null = null;
+
+  /**
    * Full path to the module on the filesystem, used internally by the module
    * loader for reloading purposes
    */
   public _modulePath: string | null = null;
+  /** Full path to the path require() was called on when loading this module */
+  public _originalImportPath: string | null = null;
 
   /**
    * The constructor
@@ -41,6 +54,7 @@ export abstract class Module {
    */
   async migrateState(oldState: this): Promise<void> {
     for (let key of this.statePreserveKeys) {
+      logger.silly(`migrateState: copying key [${key}]`);
       this[key] = oldState[key];
     }
   }
@@ -114,6 +128,14 @@ export abstract class Module {
     command.unregister();
     this.commands.delete(command);
   }
+
+  /** Return a callback to call a method on the module, will survive reloads */
+  bindCallback(callbackKey: keyof this) {
+    return (...args: any[]): any => {
+      if (this.current) return (this.current[callbackKey] as any).apply(this.current, args);
+      else return (this[callbackKey] as any).apply(this, args);
+    };
+  }
 }
 
 export class ModuleRegistry {
@@ -168,6 +190,7 @@ export class ModuleRegistry {
     }
     let module: Module = new moduleClass(); // eslint-disable-line new-cap
     this._hydrateModule(module);
+    module._originalImportPath = path;
     module._modulePath = require.resolve(path);
     // TODO: debug
     if (!require.cache[module._modulePath]) {
@@ -200,18 +223,23 @@ export class ModuleRegistry {
     if (!oldModule._modulePath) throw new Error('not possible to reload module');
     let nodeModule = require.cache[oldModule._modulePath];
     if (nodeModule) {
-      let toDelete: string[] = [];
+      let toDelete = new Set<string>();
       let toTraverse: NodeJS.Module[] = [nodeModule];
       while (toTraverse.length) {
         if (toTraverse.length > 1e6) {
           // we have problems!
           throw new Error('too many things on the stack');
         }
-        let module = toTraverse.pop();
-        toTraverse.push(...module!.children);
-        toDelete.push(module!.id);
+        let module = toTraverse.pop()!;
+        if (module.id.startsWith(oldModule._modulePath)) {
+          if (!toDelete.has(module.id)) toTraverse.push(...module!.children);
+          toDelete.add(module.id);
+        }
       }
-      for (let moduleId of toDelete) delete require.cache[moduleId];
+      for (let moduleId of toDelete) {
+        logger.silly(`delete cache for module [${moduleId}]`);
+        delete require.cache[moduleId];
+      }
     }
     // if module path changes this will die
     let moduleClass: any = require(oldModule._modulePath); // eslint-disable-line @typescript-eslint/no-var-requires
@@ -222,6 +250,12 @@ export class ModuleRegistry {
     await oldModule.unload(true);
     await newModule.migrateState(oldModule);
     await newModule.load(true);
+    oldModule.current = newModule;
+    if (oldModule.previous) {
+      oldModule.previous.current = newModule;
+      oldModule.previous = null; // allow old modules to be gc'd
+    }
+    newModule.previous = oldModule;
     if (oldModule.name !== newModule.name) {
       // this can and probably will break
       this.modules.delete(oldModule.name);

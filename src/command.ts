@@ -103,8 +103,8 @@ export interface SerializedCommandNode {
   children: number[]; // NODE POINTER
   redirectNode?: number; // NODE POINTER
   extraNodeData?: string | {
-    name?: string;
-    parser?: string;
+    name: string;
+    parser: string;
     properties?: any; // this could be literally anything
     suggests?: string;
   };
@@ -151,7 +151,7 @@ export enum CommandNodeSuggestions {
 export class CommandGraphNode {
   /** Flags of this node */
   public flags: CommandNodeFlags = {
-    nodeType: CommandNodeType.Argument,
+    nodeType: CommandNodeType.Literal,
     isExecutable: true,
     hasRedirect: false,
     hasCustomSuggestions: false
@@ -244,16 +244,21 @@ export class CommandGraphNode {
     /* eslint-disable @typescript-eslint/naming-convention,camelcase */
     let extraNodeData;
     switch (this.flags.nodeType) {
-      case CommandNodeType.Root:
+      case CommandNodeType.Root: {
         extraNodeData = undefined;
         break;
-      case CommandNodeType.Literal:
+      }
+      case CommandNodeType.Literal: {
         if (!this.name) {
           throw new Error('name required with CommandNodeType.Literal');
         }
         extraNodeData = this.name;
         break;
-      case CommandNodeType.Argument:
+      }
+      case CommandNodeType.Argument: {
+        if (!this.name || !this.parser) {
+          throw new Error('name and parser required with CommandNodeType.Argument');
+        }
         extraNodeData = {
           name: this.name,
           parser: this.parser,
@@ -261,6 +266,7 @@ export class CommandGraphNode {
           suggests: this.suggestionType
         };
         break;
+      }
     }
     return {
       children: [], // to be written later

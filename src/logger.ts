@@ -21,8 +21,6 @@ export let logger = winston.createLogger({
     ENABLE_COLOR
       ? format.colorize()
       : format.uncolorize(),
-    // winston.format.prettyPrint({ depth: Infinity }),
-    // winston.format.simple(),
     format.printf((info: Logform.TransformableInfo) => {
       // @ts-ignore typescript pls
       let splat = info[Symbol.for('splat')];

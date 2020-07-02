@@ -48,6 +48,26 @@ export default class CoreModule extends Module {
     'localCommandNodes'
   ];
 
+  _clientKeepAliveCheckIntervalCallback() {
+    // notchian server sends keepalive to client every 15 seconds
+    this.clientKeepAliveLastValue = to64BitNumber(Date.now());
+    this.proxy.injectClient('keep_alive', { keepAliveId: this.clientKeepAliveLastValue });
+    this.clientKeepAliveTimeout = setTimeout(this.bindCallback('_clientKeepAliveTimeoutCallback'), 20 * 1000);
+  }
+
+  _clientKeepAliveTimeoutCallback() {
+    logger.warn('client timed out');
+    this.proxy.proxyClient?.end('Timed out');
+    this.clientKeepAliveTimeout = null;
+    this.clientKeepAliveLastValue = null;
+  }
+
+  _serverKeepAliveTimeoutCallback() {
+    logger.warn('server connection timed out');
+    this.proxy.connectClient?.end('');
+    this.serverKeepAliveTimeout = null;
+  }
+
   /** Update the command graph with local commands */
   updateCommandGraph() {
     if (!this.commandGraph) return; // nothing to do
@@ -59,12 +79,15 @@ export default class CoreModule extends Module {
     for (let node of this.localCommandNodes) {
       this.commandGraph.root.children.add(node);
     }
-    logger.silly('updated command graph: %d local commands, %d remote commands',
+    logger.debug('updated command graph: %d local commands, %d remote commands',
       this.localCommandNodes.size,
       this.commandGraph.root.children.size - this.localCommandNodes.size);
   }
 
-  async _load(_reloading: boolean) {
+  async _load(reloading: boolean) {
+    // reattach self to the main proxy object
+    if (reloading) this.proxy.coreModule = this;
+
     // register command handler
     this.registerHook(Direction.ClientToServer, 'chat', async event => {
       if (this.proxy.commandRegistry.execute(event.data.message)) {
@@ -73,10 +96,12 @@ export default class CoreModule extends Module {
     });
 
     this.registerCommand({
-      name: 'test',
-      autocomplete: new CommandGraphNode('test').asLiteral(),
-      description: 'testing command lol',
-      handler: ctx => ctx.reply('HI!!!!! :DDDD')
+      name: 'module',
+      description: 'module management commands',
+      autocomplete: new CommandGraphNode('module'),
+      handler: ctx => {
+
+      }
     });
 
     this.registerHook(Direction.Local, 'clientConnected', async _event => {
@@ -92,18 +117,8 @@ export default class CoreModule extends Module {
         clearInterval(this.clientKeepAliveCheckInterval);
         this.clientKeepAliveCheckInterval = null;
       }
-      this.clientKeepAliveCheckInterval = setInterval(() => {
-        // notchian server sends keepalive to client every 15 seconds
-        this.clientKeepAliveLastValue = to64BitNumber(Date.now());
-        logger.silly('sending keep_alive to client', this.clientKeepAliveLastValue);
-        this.proxy.injectClient('keep_alive', { keepAliveId: this.clientKeepAliveLastValue });
-        this.clientKeepAliveTimeout = setTimeout(() => {
-          logger.warn('client timed out');
-          this.proxy.proxyClient?.end('Timed out');
-          this.clientKeepAliveTimeout = null;
-          this.clientKeepAliveLastValue = null;
-        }, 20 * 1000);
-      }, 15 * 1000);
+      this.clientKeepAliveCheckInterval = setInterval(
+        this.bindCallback('_clientKeepAliveCheckIntervalCallback'), 15 * 1000);
 
       // if we have a command graph, send it
       if (this.commandGraph) {
@@ -132,11 +147,8 @@ export default class CoreModule extends Module {
         clearTimeout(this.serverKeepAliveTimeout);
         this.serverKeepAliveTimeout = null;
       }
-      this.serverKeepAliveTimeout = setTimeout(() => {
-        logger.warn('server connection timed out');
-        this.proxy.connectClient?.end('');
-        this.serverKeepAliveTimeout = null;
-      }, 30 * 1000);
+      this.serverKeepAliveTimeout = setTimeout(
+        this.bindCallback('_serverKeepAliveTimeoutCallback'), 30 * 1000);
     });
     this.registerHook(Direction.Local, 'serverDisconnected', async _event => {
       // keepalive handlers
@@ -150,8 +162,6 @@ export default class CoreModule extends Module {
       this.localCommandNodes.clear();
     });
     this.registerHook(Direction.ClientToServer, 'keep_alive', async event => {
-      // I WILL LOG EVERYTHING AND YOU WILL NOT STOP ME
-      logger.silly('received keep_alive response from client', event.data);
       if (this.clientKeepAliveTimeout) {
         clearTimeout(this.clientKeepAliveTimeout);
         this.clientKeepAliveTimeout = null;
@@ -172,7 +182,6 @@ export default class CoreModule extends Module {
       event.cancel();
     });
     this.registerHook(Direction.ServerToClient, 'keep_alive', async event => {
-      logger.silly('responding to keep_alive from server', event.data);
       this.proxy.injectServer('keep_alive', event.data);
       this.serverKeepAliveTimeout?.refresh();
       event.cancel();
@@ -182,7 +191,6 @@ export default class CoreModule extends Module {
       // merge local command graph with server-side graph and send to client
       // this is for autocomplete
       // is this way too much effort for just autocomplete? yes
-      logger.silly('processing command graph from server');
       this.commandGraph = new CommandGraph();
       this.commandGraph.deserialize(event.data.nodes, event.data.rootIndex);
       this.localCommandNodes.clear();
