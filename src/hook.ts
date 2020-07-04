@@ -64,6 +64,8 @@ export class Hook {
   public priority: number;
   /** Associated event handler */
   public handler: EventHandler;
+  /** Whether the hook is enabled */
+  public enabled = true;
 
   /** Associated HookList and properties */
   public _list: HookList | null = null;
@@ -80,6 +82,14 @@ export class Hook {
 
   unregister() {
     this.parent.unregister(this);
+  }
+
+  enable() {
+    this.enabled = true;
+  }
+
+  disable() {
+    this.enabled = false;
   }
 }
 
@@ -207,6 +217,7 @@ export class Hooks {
     if (!hookList) return true;
     let event = new Event(type, scope, data);
     for (let hook: Hook | null | undefined = hookList.head; hook; hook = hook?._next) {
+      if (!hook.enabled) continue;
       await hook.handler(event);
       switch (event.action) {
         case EventAction.Continue:

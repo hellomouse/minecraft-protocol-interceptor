@@ -248,6 +248,8 @@ export class ModuleRegistry {
     if (!moduleClass) throw new Error('reloaded module is invalid');
     let newModule: Module = new moduleClass(); // eslint-disable-line new-cap
     this._hydrateModule(newModule);
+    newModule._originalImportPath = oldModule._originalImportPath;
+    newModule._modulePath = oldModule._modulePath;
     let wasLoaded = oldModule.loaded;
     if (wasLoaded) await oldModule.unload(true);
     await newModule.migrateState(oldModule);
@@ -286,10 +288,9 @@ export class ModuleRegistry {
     await module.unload(false);
   }
 
-  getModule(moduleName: string): Module | null {
+  get(moduleName: string): Module | null {
     let module = this.modules.get(moduleName);
     if (!module) return null;
-    if (!module.loaded) return null; // don't return unloaded modules
     return module;
   }
 }
