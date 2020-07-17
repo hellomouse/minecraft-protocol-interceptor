@@ -135,6 +135,7 @@ export default class MinecraftProxy extends EventEmitter {
     });
     await this.hooks.execute(Direction.Local, 'clientConnected', this.proxyClient);
     if (!this.connectClient) {
+      await this.hooks.execute(Direction.Local, 'beforeServerConnect', null);
       try {
         await this.doConnect();
       } catch (err) {

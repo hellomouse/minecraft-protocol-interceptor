@@ -1,40 +1,20 @@
-import { promises as fsP } from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import MinecraftProxy from '.';
 
-const MMC_ACCOUNTS_FILE = path.join(os.homedir(), '.local/share/multimc/accounts.json');
-
+// TODO: read a configuration file or something
 async function main() {
-  let multimcAccounts = JSON.parse((await fsP.readFile(MMC_ACCOUNTS_FILE)).toString());
-  let activeAccount = multimcAccounts.accounts
-    .find((a: any) => a.username === multimcAccounts.activeAccount);
-  let activeProfile = activeAccount.profiles
-    .find((a: any) => a.id === activeAccount.activeProfile);
-  let username = activeProfile.name;
-  let accessToken = activeAccount.accessToken;
-  let clientToken = activeAccount.clientToken;
-  let uid = activeProfile.id;
   let server = process.argv[2];
   let serverPort = +process.argv[3] ?? 25565;
-  let session = {
-    accessToken,
-    clientToken,
-    selectedProfile: {
-      name: username,
-      id: uid
-    }
-  };
   let proxy = new MinecraftProxy({
-    accessToken,
-    clientToken,
     serverAddress: server,
     serverPort,
-    username,
-    session,
+    username: '', // placeholder for authentication modules
+    // password: '', // if not using external authentication, load password
     version: '1.16.1',
     modules: [
-      'eval'
+      'eval',
+      'auth-multimc'
+      // 'auth-minecraftlauncher' // uncomment if using the minecraft launcher
     ],
     modulesDir: path.resolve('./build/modules'),
     moduleConfig: {

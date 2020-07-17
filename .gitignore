@@ -125,3 +125,5 @@ dist
 /modules/*
 # unless they should be part of the repository
 !/modules/eval
+!/modules/auth-multimc
+!/modules/auth-minecraftlauncher

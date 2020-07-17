@@ -1,4 +1,5 @@
 export { default } from './src/proxy';
+export type { ProxyConfiguration } from './src/proxy';
 export { Module } from './src/module';
 export { Hook, Direction, EventAction } from './src/hook';
 export type { EventHandler } from './src/hook';
