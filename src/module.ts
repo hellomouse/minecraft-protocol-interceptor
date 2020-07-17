@@ -136,6 +136,11 @@ export abstract class Module {
       else return (this[callbackKey] as any).apply(this, args);
     };
   }
+
+  /** Get other module by name */
+  getModule(name: string) {
+    return this.proxy.moduleRegistry.get(name);
+  }
 }
 
 export class ModuleRegistry {

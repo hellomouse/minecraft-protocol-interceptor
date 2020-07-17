@@ -129,12 +129,9 @@ export default class MinecraftProxy extends EventEmitter {
       this.hooks.execute(Direction.Local, 'clientDisconnected', null);
       this.proxyClient = null;
     });
-    // TODO: debug purposes
-    this.proxyClient!.once('error', (...args) => {
-      logger.debug('proxyClient emit error event', ...args);
-    });
-    this.proxyClient!.once('end', (...args) => {
-      logger.debug('proxyClient emit end event', ...args);
+    this.proxyClient!.on('error', (error: Error | string) => {
+      // this may fire twice
+      this.hooks.execute(Direction.Local, 'clientDisconnected', error);
     });
     await this.hooks.execute(Direction.Local, 'clientConnected', this.proxyClient);
     if (!this.connectClient) {
@@ -142,12 +139,18 @@ export default class MinecraftProxy extends EventEmitter {
         await this.doConnect();
       } catch (err) {
         logger.warn('failed in proxy connect', err);
+        this.hooks.execute(Direction.Local, 'serverDisconnected', err);
         this.connectClient = null;
         return;
       }
-      this.connectClient!.on('end', () => {
-        // TODO: hook these
-        this.hooks.execute(Direction.Local, 'serverDisconnected', null);
+      this.connectClient!.on('end', (reason: string) => {
+        this.hooks.execute(Direction.Local, 'serverDisconnected', reason ?? null);
+        this.connectClient = null;
+      });
+      this.connectClient!.on('error', (error: any) => {
+        // invalid token emits error but not end
+        logger.debug('connectClient error event arguments:', error);
+        this.hooks.execute(Direction.Local, 'serverDisconnected', error);
         this.connectClient = null;
       });
       await this.hooks.execute(Direction.Local, 'serverConnected', this.connectClient);
@@ -211,24 +214,19 @@ export default class MinecraftProxy extends EventEmitter {
         resolve();
         removeListeners();
       };
-      let failListener = (reason: string) => {
-        console.error('failed to connect to server:', reason);
-        reject(new Error('connection failed'));
+      let failListener = (reason: Error) => {
+        reject(reason);
         removeListeners();
       };
       let removeListeners = () => {
           this.connectClient?.removeListener('login', listener);
           this.connectClient?.removeListener('end', failListener);
+          this.connectClient?.removeListener('error', failListener);
       };
       this.connectClient!.on('login', listener);
       this.connectClient!.on('end', failListener);
-      // TODO: debug purposes
-      this.connectClient!.once('error', (...args) => {
-        logger.debug('connectClient emit error event', ...args);
-      });
-      this.connectClient!.once('end', (...args) => {
-        logger.debug('connectClient emit end event', ...args);
-      });
+      // invalid token error does not emit end event
+      this.connectClient!.on('error', failListener);
     });
   }
 

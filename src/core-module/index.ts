@@ -38,6 +38,9 @@ export default class CoreModule extends Module {
   /** Nodes regsitered in the command graph belonging to local commands */
   public localCommandNodes = new Set<CommandNode>();
 
+  /** Whether the proxy should disconnect from the server when the client disconnects */
+  public disconnectOnClientQuit = true;
+
   // if this works color me surprised
   public statePreserveKeys: (keyof this)[] = [
     'clientKeepAliveTimeout',
@@ -61,6 +64,9 @@ export default class CoreModule extends Module {
     this.proxy.proxyClient?.end('Timed out');
     this.clientKeepAliveTimeout = null;
     this.clientKeepAliveLastValue = null;
+    // cancel interval as well
+    clearInterval(this.clientKeepAliveCheckInterval!);
+    this.clientKeepAliveCheckInterval = null;
   }
 
   _serverKeepAliveTimeoutCallback() {
@@ -228,6 +234,14 @@ export default class CoreModule extends Module {
         this.clientKeepAliveTimeout = null;
       }
       this.clientKeepAliveLastValue = null;
+
+      // disconnect from server
+      if (this.disconnectOnClientQuit && this.proxy.connectClient) {
+        logger.info('client disconnected, disconnecting from server');
+        this.proxy.connectClient?.end('');
+      } else {
+        logger.info('client disconnected');
+      }
     });
     this.registerHook(Direction.Local, 'serverConnected', async _event => {
       // keepalive handlers
@@ -239,7 +253,7 @@ export default class CoreModule extends Module {
       this.serverKeepAliveTimeout = setTimeout(
         this.bindCallback('_serverKeepAliveTimeoutCallback'), 30 * 1000);
     });
-    this.registerHook(Direction.Local, 'serverDisconnected', async _event => {
+    this.registerHook(Direction.Local, 'serverDisconnected', async event => {
       // keepalive handlers
       if (this.serverKeepAliveTimeout) {
         clearTimeout(this.serverKeepAliveTimeout);
@@ -249,6 +263,15 @@ export default class CoreModule extends Module {
       // reset local command graph
       this.commandGraph = null;
       this.localCommandNodes.clear();
+
+      // kick the client
+      if (!event.data) {
+        this.proxy.proxyClient?.end('[proxy] Server disconnected');
+        logger.info('server disconnected');
+      } else {
+        this.proxy.proxyClient?.end('[proxy] ' + event.data.toString());
+        logger.info(`server disconnected:`, event.data);
+      }
     });
     this.registerHook(Direction.ClientToServer, 'keep_alive', async event => {
       if (this.clientKeepAliveTimeout) {
@@ -286,6 +309,20 @@ export default class CoreModule extends Module {
       event.cancel();
       this.updateAndSendCommandGraph();
     });
+
+    if (!reloading) {
+      // attach uncaughtException and uncaughtRejection handlers
+      let errorHandler = (error: Error) => {
+        // rethrow if no client is connected
+        if (!this.proxy.proxyClient) throw error;
+        this.proxy.proxyClient.end(`[proxy] fatal error: ${error.toString()}`);
+        setTimeout(() => {
+          throw error;
+        }, 250);
+      };
+      process.on('uncaughtException', errorHandler);
+      process.on('unhandledRejection', errorHandler);
+    }
   }
 
   async _unload(reloading: boolean) {
