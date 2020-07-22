@@ -1,13 +1,46 @@
-import { Module } from '../..';
 import { inspect } from 'util';
-import { CommandNode } from '../..';
+import * as vm from 'vm';
+import { Module, CommandNode } from '../..';
+
+const FORMAT_CHAR = '\u00a7'; // §
+const FORMAT_CODES = {
+  black: '0',
+  darkBlue: '1',
+  darkGreen: '2',
+  darkAqua: '3',
+  darkRed: '4',
+  darkPurple: '5',
+  gold: '6',
+  gray: '7',
+  darkGray: '8',
+  blue: '9',
+  green: 'a',
+  aqua: 'b',
+  red: 'c',
+  lightPurple: 'd',
+  yellow: 'e',
+  white: 'f',
+  obfuscated: 'k',
+  bold: 'l',
+  strikethrough: 'm',
+  underline: 'n',
+  italic: 'o',
+  reset: 'r'
+};
+
+function formatMinecraft(text: string, color: keyof typeof FORMAT_CODES) {
+  return `${FORMAT_CHAR}${FORMAT_CODES[color]}${text}${FORMAT_CHAR}${FORMAT_CODES.reset}`;
+}
 
 /** Evalulate JavaScript. Because why not. */
 
 export default class EvalModule extends Module {
   public name = 'eval';
+  public ctx: vm.Context | null = null;
+  public statePreserveKeys: (keyof this)[] = ['ctx'];
 
   async _load(_reloading: boolean) {
+    if (!this.ctx) this.ctx = vm.createContext(this, { name: 'eval execution context' });
     this.registerCommand({
       name: 'eval',
       description: 'evaluate javascript on the proxy',
@@ -23,12 +56,61 @@ export default class EvalModule extends Module {
         let code = ctx.args.slice(1).join(' ');
         let result: any;
         try {
-          result = eval(code);
+          result = vm.runInContext(code, this.ctx!, {
+            displayErrors: true,
+            filename: '<eval>',
+            timeout: 5000 // to prevent accidental infinite loops
+          });
         } catch (err) {
           result = err;
         }
-        result = inspect(result);
-        ctx.reply(result);
+        // TODO: util.inspect() option 'stylize' is not public and should not be
+        // used, however, there doesn't seem to be a better way to do this
+        // see: https://github.com/nodejs/node/blob/master/lib/internal/util/inspect.js#L308
+        // @ts-ignore
+        result = inspect(result, {
+          colors: false, // stylize only works when colors is false
+          stylize(value: string, type: string) {
+            switch (type) {
+              case 'bigint': return formatMinecraft(value, 'gold');
+              case 'boolean': return formatMinecraft(value, 'gold');
+              case 'date': return formatMinecraft(value, 'lightPurple');
+              case 'module': return formatMinecraft(value, 'underline');
+              case 'name': return value;
+              case 'null': return formatMinecraft(value, 'bold');
+              case 'number': return formatMinecraft(value, 'gold');
+              case 'regexp': return formatMinecraft(value, 'red');
+              case 'special': return formatMinecraft(value, 'aqua');
+              case 'string': return formatMinecraft(value, 'darkGreen');
+              case 'symbol': return formatMinecraft(value, 'darkGreen');
+              case 'undefined': return formatMinecraft(value, 'darkGray');
+              default: return value;
+            }
+          }
+        });
+
+        ctx.reply({
+          text: '',
+          extra: [
+            {
+              text: '',
+              extra: [
+                { text: 'eval> ', color: 'green' },
+                { text: code },
+                { text: '\n' }
+              ],
+              hoverEvent: {
+                action: 'show_text',
+                contents: { text: 'Input eval command' }
+              },
+              clickEvent: {
+                action: 'suggest_command',
+                value: `${this.proxy.config.commandPrefix}eval ${code}`
+              }
+            },
+            { text: result }
+          ]
+        });
       }
     });
   }
