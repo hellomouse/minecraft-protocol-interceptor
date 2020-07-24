@@ -15,7 +15,7 @@ import { CommandNode, SerializedCommandNode, CommandGraph } from '../command';
  * @return [most significant (64 - 53) bits, least significant 32 bits]
  */
 function to64BitNumber(n: number): [number, number] {
-  return [Math.floor(n / (2 ** 32)), n >>> 0];
+  return [Math.floor(n / (2 ** 32)), n | 0];
 }
 
 export default class CoreModule extends Module {
@@ -223,7 +223,7 @@ export default class CoreModule extends Module {
         });
       }
     });
-    this.registerHook(Direction.Local, 'clientDisconnected', async _event => {
+    this.registerHook(Direction.Local, 'clientDisconnected', async event => {
       // keepalive handlers
       if (this.clientKeepAliveCheckInterval) {
         clearInterval(this.clientKeepAliveCheckInterval);
@@ -234,6 +234,8 @@ export default class CoreModule extends Module {
         this.clientKeepAliveTimeout = null;
       }
       this.clientKeepAliveLastValue = null;
+
+      if (event.data) logger.warn('client error:', event.data);
 
       // disconnect from server
       if (this.disconnectOnClientQuit && this.proxy.connectClient) {

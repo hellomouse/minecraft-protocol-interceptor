@@ -40,7 +40,14 @@ export default class EvalModule extends Module {
   public statePreserveKeys: (keyof this)[] = ['ctx'];
 
   async _load(_reloading: boolean) {
-    if (!this.ctx) this.ctx = vm.createContext(this, { name: 'eval execution context' });
+    if (!this.ctx) {
+      this.ctx = vm.createContext({
+        require,
+        proxy: this.proxy,
+        getModule: this.getModule,
+        evalModule: this
+      }, { name: 'eval execution context' });
+    }
     this.registerCommand({
       name: 'eval',
       description: 'evaluate javascript on the proxy',
@@ -89,6 +96,11 @@ export default class EvalModule extends Module {
           }
         });
 
+        if (result.length >= 10000) {
+          // minecraft supports a maximum length of 262144 but anything above
+          // 10k would probably overflow the chat buffer anyways
+          result = `${formatMinecraft('Warning: output truncated', 'red')}\n${result.slice(0, 10000)}}`;
+        }
         ctx.reply({
           text: '',
           extra: [
