@@ -61,7 +61,7 @@ export default class CoreModule extends Module {
 
   _clientKeepAliveTimeoutCallback() {
     logger.warn('client timed out');
-    this.proxy.proxyClient?.end('Timed out');
+    this.proxy.kickClient('Timed out');
     this.clientKeepAliveTimeout = null;
     this.clientKeepAliveLastValue = null;
     // cancel interval as well
@@ -71,7 +71,7 @@ export default class CoreModule extends Module {
 
   _serverKeepAliveTimeoutCallback() {
     logger.warn('server connection timed out');
-    this.proxy.connectClient?.end('');
+    this.proxy.disconnectServer();
     this.serverKeepAliveTimeout = null;
   }
 
@@ -240,7 +240,7 @@ export default class CoreModule extends Module {
       // disconnect from server
       if (this.disconnectOnClientQuit && this.proxy.connectClient) {
         logger.info('client disconnected, disconnecting from server');
-        this.proxy.connectClient?.end('');
+        this.proxy.disconnectServer();
       } else {
         logger.info('client disconnected');
       }
@@ -268,10 +268,10 @@ export default class CoreModule extends Module {
 
       // kick the client
       if (!event.data) {
-        this.proxy.proxyClient?.end('[proxy] Server disconnected');
+        this.proxy.kickClient('[proxy] Server disconnected');
         logger.info('server disconnected');
       } else {
-        this.proxy.proxyClient?.end('[proxy] ' + event.data.toString());
+        this.proxy.kickClient('[proxy] ' + event.data.toString());
         logger.info(`server disconnected:`, event.data);
       }
     });
@@ -317,7 +317,7 @@ export default class CoreModule extends Module {
       let errorHandler = (error: Error) => {
         // rethrow if no client is connected
         if (!this.proxy.proxyClient) throw error;
-        this.proxy.proxyClient.end(`[proxy] fatal error: ${error.toString()}`);
+        this.proxy.kickClient(`[proxy] fatal error: ${error.toString()}`);
         setTimeout(() => {
           throw error;
         }, 250);

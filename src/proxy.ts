@@ -259,4 +259,23 @@ export default class MinecraftProxy extends EventEmitter {
     // TODO: rewrite command graph from core module
     this.emit('reloadConfiguration');
   }
+
+  public kickClient(reason?: string | Record<string, any>) {
+    if (!this.proxyClient) return;
+    let parsed: Record<string, any>;
+    if (!reason) parsed = {};
+    else if (typeof reason === 'string') parsed = { text: reason };
+    else parsed = reason; // reason was provided as json text component
+    let stringified = JSON.stringify(parsed);
+
+    if (this.proxyClient.state === 'play') {
+      this.proxyClient.write('kick_disconnect', { reason: stringified });
+    } else if (this.proxyClient.state === 'login') {
+      this.proxyClient.write('disconnect', { reason: stringified });
+    }
+  }
+
+  public disconnectServer() {
+    this.connectClient?.end('');
+  }
 }
