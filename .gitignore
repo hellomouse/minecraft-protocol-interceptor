@@ -127,3 +127,4 @@ dist
 !/modules/eval
 !/modules/auth-multimc
 !/modules/auth-minecraftlauncher
+!/modules/misc

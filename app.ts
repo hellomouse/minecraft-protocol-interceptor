@@ -13,8 +13,9 @@ async function main() {
     version: '1.16.1',
     modules: [
       'eval',
-      'auth-multimc'
-      // 'auth-minecraftlauncher' // uncomment if using the minecraft launcher
+      'auth-multimc',
+      // 'auth-minecraftlauncher', // uncomment if using the minecraft launcher
+      'misc'
     ],
     modulesDir: path.resolve('./build/modules'),
     moduleConfig: {
